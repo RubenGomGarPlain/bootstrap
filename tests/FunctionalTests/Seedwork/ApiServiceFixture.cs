@@ -1,7 +1,8 @@
-﻿using System.Data;
+extern alias DbSeederRef;
+using System.Data;
 using System.Diagnostics;
 using Api;
-using DbSeeder;
+using DbSeederRef::DbSeeder;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Hosting;
