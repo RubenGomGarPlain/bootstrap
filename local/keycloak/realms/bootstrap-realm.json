@@ -1,0 +1,57 @@
+{
+  "realm": "bootstrap",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "clients": [
+    {
+      "clientId": "bootstrap-bff",
+      "name": "Bootstrap BFF",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "bootstrap-bff-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "https://localhost:*/auth/callback",
+        "http://localhost:*/auth/callback"
+      ],
+      "webOrigins": [
+        "https://localhost:*",
+        "http://localhost:*"
+      ],
+      "postLogoutRedirectUris": [
+        "https://localhost:*/",
+        "http://localhost:*/"
+      ],
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "email": "testuser@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test1234!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Aspire.Keycloak.Authentication" />
         <PackageReference Include="Aspire.Seq" />
         <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
         <PackageReference Include="DotNetCore.CAP" />
@@ -15,6 +16,8 @@
         <PackageReference Include="DotNetCore.CAP.Dashboard" />
         <PackageReference Include="DotNetCore.CAP.InMemoryStorage" />
         <PackageReference Include="DotNetCore.CAP.PostgreSql" />
+        <PackageReference Include="Keycloak.AuthServices.Authentication" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
         <PackageReference Include="Microsoft.EntityFrameworkCore" />
         <PackageReference Include="Savorboard.CAP.InMemoryMessageQueue" />
         <PackageReference Include="Swashbuckle.AspNetCore" />

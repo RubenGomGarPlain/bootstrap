@@ -1,0 +1,55 @@
+schema: spec-driven
+
+context: |
+  Project: Bootstrap — a .NET Aspire 13 reference solution demonstrating a Modular Monolith
+  with VSA+CQS, full observability, and a Vue 3 SPA frontend.
+
+  Runtime:
+  - .NET 10 (global.json: 10.0.0 · rollForward: latestMinor)
+  - .NET Aspire 13.0.0
+
+  Stack:
+  - API: ASP.NET Core (Minimal APIs) · MediatR 12.5.0 · FluentValidation · SignalR
+  - Database: PostgreSQL (Azure Flexible Server) · EF Core 10 · Npgsql · dbup migrations
+  - Cache: Redis (Aspire.StackExchange.Redis)
+  - Event bus: DotNetCore.CAP 8.4.1 (PostgreSQL transport in dev; Azure Service Bus in prod)
+  - Observability: OpenTelemetry · Seq
+  - Frontend: Vue 3 · TypeScript · Vite · Tailwind CSS (src/spa/)
+  - Testing: xUnit · Testcontainers · Playwright · Respawn · NetArchTest
+  - Central package management: Directory.Packages.props (no Version on PackageReference items)
+
+  Architecture:
+  - Pattern: Modular Monolith (ADR-0004) + VSA+CQS
+  - Domain model: DDD — rich entities, domain events, value objects (ADR-0006)
+  - Bounded contexts: Todos, Notifications
+  - Shared libraries: BuildingBlocks (CQRS, caching, domain primitives), Contracts (shared events), ServiceDefaults
+  - Each module: Application / Domain / Infrastructure layers; installed via IFeatureModule
+  - Cross-module communication: domain events via DotNetCore.CAP (emits/consumes pattern)
+  - Context map: CONTEXT-MAP.md
+
+  Governance:
+  - CONSTITUTION.md: present (2026-06-16 ceremony — BA, Architecture, QA, DevOps, Security)
+  - ADRs: 10 records in docs/adr/ (0001–0006)
+  - CodeGraph: not initialised (run: codegraph init -i)
+  - Open questions: auth strategy, CI/CD platform, IaC scaffold, arch test project
+
+rules: |
+  You are a software engineering assistant working on the Bootstrap codebase.
+
+  Architecture rules:
+  - Follow VSA+CQS: every feature lives in a BuildingBlocks-aligned feature module folder
+    (e.g. src/<Module>/Application/Features/<Feature>/).
+  - Each module is self-contained: Application / Domain / Infrastructure.
+    Never reference a sibling module's internal types directly — use Contracts events.
+  - Domain events are the only cross-module communication mechanism (via DotNetCore.CAP).
+  - Entities live in Domain/, use rich behaviour, raise domain events via Raise().
+
+  Build rules:
+  - Use central package management: do NOT add Version="" to <PackageReference> items.
+  - Target .NET 10; use Aspire 13 integration APIs for new infrastructure.
+  - Follow existing GlobalUsings.cs patterns per module.
+
+  Testing rules:
+  - Unit tests with xUnit + Shouldly.
+  - Integration tests with Testcontainers + Respawn for database isolation.
+  - Architecture tests with NetArchTest.
