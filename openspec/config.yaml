@@ -1,0 +1,54 @@
+schema: spec-driven
+
+context: |
+  ## Project: Bootstrap
+  A .NET 9 Modular Monolith orchestrated by .NET Aspire 9.3, demonstrating VSA + CQS patterns
+  with Domain-Driven Design, event-driven cross-module communication, and full-stack observability.
+
+  ### Architecture
+  - **Style:** Modular Monolith — modules are independently cohesive, no shared databases across modules
+  - **Pattern:** Vertical Slice Architecture (VSA) + CQS via MediatR; one folder per feature
+  - **DDD:** Rich domain entities, Value Objects, Domain Events raised from aggregates
+  - **Data access:** EF Core (commands/migrations) · Dapper (complex queries) · raw SQL (critical perf)
+  - **Cross-module messaging:** DotNetCore.CAP over RabbitMQ; contracts in `src/Contracts/`
+  - **Real-time:** SignalR (`TodoHub`) in Notifications module
+
+  ### Modules (bounded contexts)
+  - **Todos** (`src/Todos/`) — core task-management context; owns `Todo` aggregate
+  - **Notifications** (`src/Notifications/`) — reacts to domain events, sends emails + SignalR pushes
+  - **Contracts** (`src/Contracts/`) — shared integration events: `TodoCreatedEvent`, `TodoCompletedEvent`, `TodoCompleted`
+  - **Api** (`src/Api/`) — presentation layer; hosts all module endpoints
+  - **BuildingBlocks** (`src/BuildingBlocks/`) — CQRS interfaces + behaviours, base entity, domain-event infra
+
+  ### Infrastructure (Aspire)
+  - PostgreSQL — primary persistence
+  - Redis — distributed cache
+  - RabbitMQ — async messaging bus (CAP transport)
+  - Seq — structured log sink
+  - SPA (React/Vite) — `src/spa/`
+
+  ### Testing strategy
+  - **Unit:** xUnit + Builder pattern — `tests/TodoUnitTests/`
+  - **Functional:** WebApplicationFactory — `tests/FunctionalTests/`
+  - **Architecture:** ArchUnit.NET — `tests/ArchTests/`
+  - **E2E:** Playwright + Aspire — `tests/E2ETests/`
+
+  ### Governance
+  - CONSTITUTION.md: present ✓ (generated 2026-06-16)
+  - ADRs: 9 records in `docs/adr/` (ADR-0001 through ADR-0007 + 0005b)
+  - Key decisions: Modular Monolith (ADR-0004), Aspire (ADR-0003), DDD (ADR-0006),
+    Data Access hybrid (ADR-0002), Testing pyramid (ADR-0005), Deferred Auth (ADR-0007)
+
+  ### Context topology
+  - CONTEXT-MAP.md: present (multi-context — 2 bounded contexts: Todos, Notifications)
+  - Module glossaries: `src/Todos/CONTEXT.md`, `src/Notifications/CONTEXT.md`
+  - CONSTITUTION.md: present — full governance ceremony completed 2026-06-16
+
+rules:
+  - Respect module boundaries: never import Todos internals from Notifications; use Contracts events only
+  - All cross-module communication goes through DotNetCore.CAP + RabbitMQ
+  - New features follow VSA: one folder per feature under `Application/Features/<Entity>/<Commands|Queries|Events>`
+  - Domain logic lives in the `Domain/` folder; no business rules in handlers
+  - Use EF Core for commands, Dapper for complex read queries
+  - BuildingBlocks base classes (`BaseEntity`, `ICommand`, `IQuery`) must be used for all domain entities and CQRS contracts
+  - Architecture tests (`tests/ArchTests/`) guard module dependency rules; keep them green
