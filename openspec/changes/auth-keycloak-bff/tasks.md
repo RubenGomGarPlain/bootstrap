@@ -41,10 +41,12 @@ Create a minimal Keycloak realm export with:
 
 **File:** `src/Api/ServiceCollectionExtensions.cs`
 
-Inside `AddApiServices()`:
+Add a new `AddBffAuthentication(this WebApplicationBuilder builder)` extension method (do **not** modify the existing `AddApiServices()` which does not exist):
 - Register Cookie authentication (HttpOnly, SameSite=Strict, Secure, 401 on redirect)
 - Register Keycloak OIDC via `AddKeycloakOpenIdConnect` (realm: `bootstrap`, client: `bootstrap-bff`)
+- Add `options.ClaimActions.MapJsonSubKey("roles", "realm_access", "roles")` to map Keycloak realm roles to flat `"roles"` claims
 - Register `services.AddAuthorization()`
+- Call `builder.AddBffAuthentication()` from `Program.cs` after `builder.AddApiServices()`
 
 ---
 
@@ -53,12 +55,18 @@ Inside `AddApiServices()`:
 **File:** `src/Api/Auth/AuthEndpoints.cs`
 
 Implement `MapAuthEndpoints()` extension with:
-- `GET /auth/login` → OIDC challenge
-- `GET /auth/callback` → stub (handled by OIDC middleware), AllowAnonymous
+- `GET /auth/login` → OIDC challenge. **Validate `returnUrl`** — only accept local relative paths
+  using the full guard:
+  `returnUrl.StartsWith('/') && !returnUrl.StartsWith("//") && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)`
+  The `!returnUrl.StartsWith("//")` check is **required** — without it, `//evil.com` passes
+  the other two conditions and is treated as a protocol-relative external redirect by browsers.
+  Fall back to `"/"` otherwise.
+- **Do NOT register a `/auth/callback` stub endpoint.** The OIDC middleware intercepts
+  `CallbackPath` before routing; a duplicate endpoint causes routing conflicts.
 - `POST /auth/logout` → SignOut both Cookie + OIDC schemes
-- `GET /auth/me` → return user claims JSON, RequireAuthorization
+- `GET /auth/me` → return user claims JSON (`sub`, `name`, `email`, `preferred_username`, `roles`), RequireAuthorization
 
-Register in `src/Api/Program.cs` with `app.MapAuthEndpoints()`.
+Register in `src/Api/Program.cs` with `app.MapAuthEndpoints()` (before `app.MapEndpoints()`).
 
 ---
 
@@ -66,9 +74,11 @@ Register in `src/Api/Program.cs` with `app.MapAuthEndpoints()`.
 
 **File:** `src/Api/Program.cs`
 
-- Add `app.UseAuthentication()` and `app.UseAuthorization()` to the pipeline (before `UseRouting` / after `UseProblemDetails`)
+- Add `UseAuthentication()` and `UseAuthorization()` in the correct order:
+  `UseProblemDetails() → UseHttpsRedirection() → UseRouting() → UseAuthentication() → UseAuthorization()`
+  **`UseAuthentication` must come AFTER `UseRouting`** (endpoint-aware auth policies require routing to have run first).
 - Add `.RequireAuthorization()` to the `app.MapEndpoints()` call
-- Add `.AllowAnonymous()` to swagger, health, and `/auth/*` endpoints
+- Add `.AllowAnonymous()` to swagger, health, and `/auth/*` group endpoints
 
 ---
 
@@ -97,18 +107,32 @@ Add `"Keycloak": { "ClientSecret": "bootstrap-bff-secret" }`.
 
 ---
 
-## T-10 · Write ADR
+## T-10 · ~~Write ADR~~ *(already committed)*
 
-**File:** `docs/adr/0007-auth-keycloak-bff.md`
+`docs/adr/0007-auth-keycloak-bff.md` was committed as part of the planning phase. No action needed.
 
-Document the decision: Keycloak as OIDC IdP, BFF embedded in Api, cookie-based session, global RequireAuthorization.
+---
+
+## T-11 · Write auth integration + E2E tests
+
+**Files:**
+- `tests/Api.IntegrationTests/Auth/AuthEndpointsTests.cs` — xUnit + `WebApplicationFactory` tests:
+  - `GET /auth/me` returns `401` when unauthenticated
+  - `GET /auth/login?returnUrl=/todos` — valid local path, **accepted** (RedirectUri = `/todos`)
+  - `GET /auth/login?returnUrl=bad` — no leading slash, **rejected** (RedirectUri falls back to `/`)
+  - `GET /auth/login?returnUrl=//evil.com` — protocol-relative bypass, **rejected** (RedirectUri falls back to `/`)
+  - `GET /auth/login?returnUrl=https://evil.com` — absolute URL, **rejected** (RedirectUri falls back to `/`)
+- `tests/E2E/Auth/LoginFlowTests.cs` — Playwright test:
+  - Navigate to a protected page → redirected to Keycloak login → log in as `testuser` → redirected back → `/auth/me` returns authenticated user
+
+**Note:** Keycloak integration tests require the Aspire test host (`Aspire.Hosting.Testing`) with the Keycloak container running.
 
 ---
 
 ## Execution Order
 
 ```
-T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 → T-08 → T-09 → T-10
+T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 → T-08 → T-09 → T-11
 ```
 
 Dependencies:
@@ -118,3 +142,4 @@ Dependencies:
 - T-06 depends on T-05 (endpoints must exist to apply RequireAuthorization)
 - T-07 is independent of .NET tasks
 - T-08 is independent of .NET tasks
+- T-11 depends on T-05 + T-06 (endpoints must be complete before tests are written)

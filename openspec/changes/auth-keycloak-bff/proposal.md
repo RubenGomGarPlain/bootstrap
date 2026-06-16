@@ -2,7 +2,7 @@
 
 **Change ID:** auth-keycloak-bff  
 **Date:** 2026-06-16  
-**Status:** ready-for-apply  
+**Status:** revised-after-validate  
 
 ## Problem
 
@@ -27,11 +27,11 @@ SPA (Vue 3)
   ▼
 Api (BFF embedded)
   ├── GET  /auth/login     → OIDC challenge → redirect to Keycloak
-  ├── GET  /auth/callback  → OIDC callback, issues HttpOnly session cookie
+  ├── GET  /auth/callback  → OIDC middleware handles automatically (no stub endpoint)
   ├── POST /auth/logout    → revoke session + Keycloak end_session
-  └── GET  /auth/me        → returns user claims from session cookie
+  └── GET  /auth/me        → returns user claims from session cookie (roles mapped from realm_access)
   │
-  │  Bearer token (from session) forwarded to internal handlers
+  │  Tokens stored server-side (SaveTokens=true); SPA receives only an HttpOnly session cookie
   ▼
 Keycloak (Aspire container in dev)
 ```

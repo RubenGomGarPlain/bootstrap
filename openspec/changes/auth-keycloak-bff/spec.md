@@ -1,7 +1,7 @@
 # Spec: Keycloak Auth with BFF Pattern
 
 **Change ID:** auth-keycloak-bff  
-**Status:** ready-for-apply  
+**Status:** revised-after-validate  
 
 ---
 
@@ -60,58 +60,82 @@ Add the realm JSON file at `local/keycloak/realms/bootstrap-realm.json` with:
 
 ## 4. Api BFF Configuration (`src/Api/`)
 
-### 4a. `ServiceCollectionExtensions.cs` — `AddApiServices()`
+### 4a. `ServiceCollectionExtensions.cs` — new `AddBffAuthentication()` extension
 
-Add BFF cookie + OIDC authentication:
+> **Note:** `AddApiServices()` does not currently exist in `ServiceCollectionExtensions.cs`.
+> Add a new `AddBffAuthentication(this WebApplicationBuilder builder)` extension method in that
+> file and call it from `Program.cs` after `builder.AddApiServices()`.
+
+Add BFF cookie + OIDC authentication, including Keycloak role-claim mapping:
 
 ```csharp
-services.AddAuthentication(options =>
+public static WebApplicationBuilder AddBffAuthentication(this WebApplicationBuilder builder)
 {
-    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
-})
-.AddCookie(options =>
-{
-    options.Cookie.HttpOnly = true;
-    options.Cookie.SameSite = SameSiteMode.Strict;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    options.ExpireTimeSpan = TimeSpan.FromHours(8);
-    options.SlidingExpiration = true;
-    // Return 401 JSON (not a redirect) for API calls
-    options.Events.OnRedirectToLogin = ctx =>
-    {
-        ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return Task.CompletedTask;
-    };
-})
-.AddKeycloakOpenIdConnect(
-    serviceName: "keycloak",            // matches Aspire resource name
-    realm: "bootstrap",
-    options =>
-    {
-        options.ClientId = "bootstrap-bff";
-        options.ClientSecret = builder.Configuration["Keycloak:ClientSecret"]
-                               ?? "bootstrap-bff-secret";
-        options.ResponseType = OpenIdConnectResponseType.Code;
-        options.SaveTokens = true;
-        options.GetClaimsFromUserInfoEndpoint = true;
-        options.CallbackPath = "/auth/callback";
-        options.SignedOutCallbackPath = "/auth/signed-out";
-        options.Scope.Add("openid");
-        options.Scope.Add("profile");
-        options.Scope.Add("email");
-    });
+    builder.Services
+        .AddAuthentication(options =>
+        {
+            options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+        })
+        .AddCookie(options =>
+        {
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.ExpireTimeSpan = TimeSpan.FromHours(8);
+            options.SlidingExpiration = true;
+            // Return 401 JSON (not a redirect) for API calls
+            options.Events.OnRedirectToLogin = ctx =>
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            };
+        })
+        .AddKeycloakOpenIdConnect(
+            serviceName: "keycloak",            // matches Aspire resource name
+            realm: "bootstrap",
+            options =>
+            {
+                options.ClientId = "bootstrap-bff";
+                options.ClientSecret = builder.Configuration["Keycloak:ClientSecret"]
+                                       ?? "bootstrap-bff-secret";
+                options.ResponseType = OpenIdConnectResponseType.Code;
+                options.SaveTokens = true;
+                options.GetClaimsFromUserInfoEndpoint = true;
+                options.CallbackPath = "/auth/callback";
+                options.SignedOutCallbackPath = "/auth/signed-out";
+                options.Scope.Add("openid");
+                options.Scope.Add("profile");
+                options.Scope.Add("email");
+                // Map Keycloak realm_access.roles → flat "roles" claims
+                options.ClaimActions.MapJsonSubKey("roles", "realm_access", "roles");
+            });
 
-services.AddAuthorization();
+    builder.Services.AddAuthorization();
+    return builder;
+}
+```
+
+Register in `Program.cs`:
+
+```csharp
+builder.AddBffAuthentication();   // ← add after builder.AddApiServices()
 ```
 
 ### 4b. `Program.cs` — middleware pipeline
 
+The required order in ASP.NET Core Minimal APIs is `UseRouting → UseAuthentication → UseAuthorization`.
+Insert both auth middlewares **after** `UseRouting`:
+
 ```csharp
-app.UseAuthentication();   // ← add before UseRouting
-app.UseAuthorization();    // ← add after UseAuthentication
+app.UseProblemDetails()
+    .UseHttpsRedirection()
+    .UseRouting()
+    .UseAuthentication()   // ← after UseRouting
+    .UseAuthorization();   // ← after UseAuthentication
 
 // Global auth enforcement — placed after MapEndpoints()
+app.MapAuthEndpoints();    // ← must be before MapEndpoints() so /auth/* is registered
 app.MapEndpoints()
    .RequireAuthorization();  // all endpoints require auth by default
 
@@ -132,19 +156,28 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("/auth").AllowAnonymous();
 
-        // Trigger OIDC login — redirect to Keycloak
+        // Trigger OIDC login — redirect to Keycloak.
+        // returnUrl MUST be a local relative path to prevent open-redirect attacks.
         group.MapGet("/login", (HttpContext ctx, string? returnUrl) =>
         {
-            var redirectUri = returnUrl ?? "/";
+            // Validate returnUrl is a local path; fall back to "/" if invalid.
+            // StartsWith('/') guard alone is insufficient — "//evil.com" also starts with '/'
+            // and is a valid protocol-relative URL that browsers follow as an external redirect.
+            var redirectUri = (!string.IsNullOrEmpty(returnUrl)
+                               && returnUrl.StartsWith('/')
+                               && !returnUrl.StartsWith("//")    // block protocol-relative bypass
+                               && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative))
+                              ? returnUrl
+                              : "/";
+
             return Results.Challenge(
                 new AuthenticationProperties { RedirectUri = redirectUri },
                 [OpenIdConnectDefaults.AuthenticationScheme]);
         });
 
-        // OIDC callback is handled automatically by the OpenIdConnect middleware
-        // but we need a stub endpoint so routing resolves /auth/callback
-        group.MapGet("/callback", () => Results.Ok())
-             .ExcludeFromDescription();
+        // /auth/callback is handled entirely by the OIDC middleware before routing —
+        // do NOT register a stub endpoint here; it creates a conflicting route.
+        // The CallbackPath = "/auth/callback" in AddBffAuthentication() is sufficient.
 
         // Logout — clear local cookie + trigger Keycloak end_session
         group.MapPost("/logout", async (HttpContext ctx) =>
@@ -274,7 +307,7 @@ URLs needed. Add client secret placeholder:
 | AC-1 | `GET /auth/login` redirects to Keycloak login page |
 | AC-2 | After login, `GET /auth/me` returns `{ sub, name, email, username, roles }` |
 | AC-3 | `POST /auth/logout` clears the session cookie and ends the Keycloak session |
-| AC-4 | Unauthenticated calls to any `/api/*` endpoint return `401` (not a redirect) |
+| AC-4 | Unauthenticated calls to any protected endpoint return `401` (not a redirect) |
 | AC-5 | SPA `useAuth` composable resolves `isAuthenticated` from `/auth/me` on mount |
 | AC-6 | Keycloak starts as a container in Aspire and is reachable at the configured realm URL |
 | AC-7 | Vite proxy forwards `/auth/*` and `/api/*` to the Api with no CORS errors |
