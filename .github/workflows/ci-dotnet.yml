@@ -1,0 +1,58 @@
+name: CI — .NET
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & Test (.NET)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v4
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('Directory.Packages.props') }}
+          restore-keys: nuget-
+
+      - name: Restore
+        run: dotnet restore BootStrap.sln
+
+      - name: Build
+        run: dotnet build BootStrap.sln --no-restore --configuration Release
+
+      - name: Test — Unit
+        if: always()
+        run: dotnet test tests/TodoUnitTests --no-build --configuration Release --logger trx --results-directory TestResults
+
+      - name: Test — Architecture
+        if: always()
+        run: dotnet test tests/ArchTests --no-build --configuration Release --logger trx --results-directory TestResults
+
+      - name: Test — Functional
+        if: always()
+        run: dotnet test tests/FunctionalTests --no-build --configuration Release --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-dotnet
+          path: TestResults/**/*.trx
