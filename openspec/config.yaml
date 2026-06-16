@@ -1,0 +1,53 @@
+schema: spec-driven
+
+context: |
+  ## Project: BootStrap — Modular Monolith (.NET 10 + Aspire 13)
+
+  ### Architecture
+  - **Style:** Modular Monolith with Clean Architecture per bounded context
+  - **Modules:** Todos (core task management), Notifications (event-driven delivery), Contracts (shared types), Api (HTTP host), ServiceDefaults (Aspire/OTel defaults)
+  - **Pattern:** CQRS via MediatR 12; Commands and Queries live under `Application/Features/<Aggregate>/Commands|Queries/`
+  - **Domain events** flow via CAP (DotNetCore.CAP) using a PostgreSQL outbox and RabbitMQ transport
+  - **BuildingBlocks** (`src/BuildingBlocks/`) provides CQRS primitives, DomainEvents base, Cache, and Feature scaffolding shared across modules
+  - **Dependency direction:** Domain ← Application ← Infrastructure ← Api (Domain is framework-free)
+
+  ### Stack
+  - .NET SDK 10.0 · ASP.NET Core 10
+  - .NET Aspire 13.0 — orchestrates API, SPA, PostgreSQL, Redis, RabbitMQ, Seq
+  - EF Core 10 + Npgsql (PostgreSQL); schema migrations via dbup-postgresql
+  - Redis for distributed caching
+  - OpenTelemetry → Seq for traces, metrics, and structured logs
+  - Vue 3 + TypeScript + Vite + Tailwind CSS SPA (`src/spa/`)
+
+  ### Governance (constitution ceremony completed 2026-06-16)
+  - CONSTITUTION.md: present ✓
+  - 10 ADRs in `docs/adr/`
+  - Central package management via `Directory.Packages.props`
+  - EditorConfig present (`.editorconfig`)
+
+  ### Domain model
+  - **Todos** bounded context: `Todo` aggregate (Id, Title, Completed); raises `TodoCreatedEvent`, `TodoCompletedEvent`
+  - **Notifications** bounded context: reactive; consumes Todos events → email (FluentEmail) + SignalR push
+  - **Contracts**: shared kernel for cross-module event types — treat as stable public API
+
+  ### Quality gates (from ADRs + constitution)
+  - Unit tests: xUnit + Builder pattern (Domain + Application layers)
+  - Integration tests: Testcontainers (PostgreSQL, Redis, RabbitMQ)
+  - Functional tests: WebApplicationFactory
+  - Architecture tests: ArchUnit.NET (layer isolation, module isolation)
+  - E2E: Playwright + Aspire
+
+  ### Open concerns (from cross-validation)
+  - Auth strategy: not yet defined — all endpoints currently open; ADR required before production
+  - CI/CD: not yet created — pipeline ADR pending
+  - Deployment target: TBD (Azure Container Apps recommended; IaC not yet scaffolded)
+
+rules:
+  - Teach, don't just fix — explain the why behind every suggestion.
+  - Follow existing patterns: CQRS command/query structure, Clean Architecture layering, domain events via CAP.
+  - New ADRs required before adding new modules, changing architecture style, or introducing new infrastructure dependencies.
+  - Preserve module isolation: modules must not reference each other directly; use Contracts for shared types.
+  - Treat Contracts event types as a stable public API — breaking changes require an ADR.
+  - Keep migrations in `src/<Module>/Infrastructure/Persistence/Migrations/` and use dbup scripts for data migrations.
+  - Domain layer must remain framework-free (no EF attributes, no MediatR, no ASP.NET references).
+  - All public methods in Domain + Application MUST have unit tests; all endpoints MUST have integration tests.
