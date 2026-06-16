@@ -1,4 +1,5 @@
 using Api;
+using Api.Auth;
 using BuildingBlocks.DependencyInjection;
 using Hellang.Middleware.ProblemDetails;
 using Microsoft.AspNetCore.Builder;
@@ -10,6 +11,7 @@ using Todos;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddApiServices();
+builder.AddBffAuthentication();
 
 builder.AddIntegrationCommunucation();
 builder.AddCustomSeqEndpoint();
@@ -29,10 +31,15 @@ if (app.Environment.IsDevelopment())
 
 app.UseProblemDetails()
     .UseHttpsRedirection()
-    .UseRouting();
+    .UseRouting()
+    .UseAuthentication()
+    .UseAuthorization();
 
 NotificationsModule.Map(app);
 
-app.MapEndpoints();
+app.MapAuthEndpoints();
+
+var apiGroup = app.MapGroup("").RequireAuthorization();
+app.MapEndpoints(apiGroup);
 
 app.Run();

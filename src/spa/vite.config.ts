@@ -25,6 +25,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/api/, ''),
         secure: false
+      },
+      '/auth': {
+        target: process.env.services__api__https__0 || process.env.services__api__http__0,
+        changeOrigin: true,
+        secure: false
       }
     }
   }

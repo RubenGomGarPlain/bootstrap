@@ -20,12 +20,18 @@ builder.AddProject<Projects.DbService>("sql-service")
     .WithReference(sql)
     .WaitFor(sql);
 
+var keycloak = builder.AddKeycloak("keycloak", port: 8080)
+    .WithDataVolume()
+    .WithRealmImport("../local/keycloak/realms");
+
 var api = builder.AddProject<Projects.Api>(Api)
     .WithReference(sql)
     .WithReference(cache)
     .WithReference(mail)
+    .WithReference(keycloak)
     .WithExternalHttpEndpoints()
-    .WaitFor(sql);
+    .WaitFor(sql)
+    .WaitFor(keycloak);
 
 builder.AddViteApp("front", "../spa")
     .WithNpm(install: true)
